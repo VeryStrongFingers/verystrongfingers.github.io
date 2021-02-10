@@ -1,0 +1,81 @@
+---
+# Let's add a comment to make this file sass-y.
+# Change this file for any custom CSS.
+---
+
+* {
+	  scrollbar-color: #454a4d #202324;
+}
+.post {
+	max-width: 1020px;
+}
+html {
+	background-color: #181a1b !important;
+}
+body {
+	color: rgb(192, 186, 178);
+}
+pre {
+	border-color: rgb(34, 63, 80);
+	background-color: rgb(19, 34, 39) !important;
+	background-image: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+	color: rgb(203, 198, 192);
+}
+/* We need to add display:inline in order to align the '>>' of the 'read more' link */
+.post-excerpt p {
+	display:inline;
+}
+
+.post::after {
+	border-color: rgb(40, 61, 73);
+	background-color: rgb(24, 26, 27);
+	background-image: none;
+	box-shadow: rgb(24, 26, 27) 0px 0px 0px 5px;
+}
+
+::selection {
+	background-color: #004daa !important;
+	color: #e8e6e3 !important;
+}
+
+code, tt {
+	border-color: rgb(34, 63, 80);
+	background-color: rgb(19, 34, 39);
+	background-image: none;
+}
+
+.no-cover.main-header {
+  background-color: rgb(28, 31, 32);
+}
+
+.no-cover .page-title {
+	color: rgba(232, 230, 227, 0.8);
+}
+
+.no-cover .page-description {
+	color: rgba(232, 230, 227, 0.5);
+}
+
+a {
+	color: rgb(185, 179, 170);
+}
+a:hover {
+	color: rgb(221, 218, 214);
+}
+
+.no-cover .main-nav.overlay .back-button, .no-cover .main-nav.overlay .subscribe-button {
+	color: rgba(232, 230, 227, 0.4);
+	border-color: rgba(140, 130, 115, 0.3);
+}
+
+.post {
+	border-bottom-color: rgb(34, 61, 76);
+}
+
+// Import partials from `sass_dir` (defaults to `_sass`)
+@import
+	"syntax"
+;

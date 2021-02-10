@@ -1,0 +1,19 @@
+name: VeryStrongFingers
+description: Kubernetes and stuff idk
+meta_description: "VeryStrongFingers"
+
+markdown: kramdown
+highlighter: rouge
+logo: false
+paginate: 15
+baseurl: ~
+domain_name: "https://verystrongfingers.github.io"
+google_analytics: ~
+plugins: [jekyll-paginate]
+
+# Details for the RSS feed generator
+url: ""
+author: "Mitchell"
+
+# Disqus config
+disqus-shortname: ""

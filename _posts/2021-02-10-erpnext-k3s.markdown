@@ -1,0 +1,348 @@
+---
+layout: post
+title:  "Installing ErpNEXT to a local k3s cluster"
+date:   2021-02-00 01:13:39 +1100
+categories: jekyll update
+---
+[ERPNext is a beautiful piece of open source](https://erpnext.com/) (GPL licensed) work - intended to offer an alternative to the encumbered and very enterprise SAP and ERP solutions that are typically implemented.
+
+Given the nature of the project with slow but natural rate of adoption & popularity, the kubernetes/helm documentation are quite raw. Community and developer resources are also lacking due to reasons that will likely resolve as the project matures and gets adopted.  
+
+We've had a very recent release of K3d v4.0 (mid-Jan 2021) which I've been keen to try out. Thus this post was born.
+
+<small>
+If you just want to blindly copy+paste commands, getting your instance operational ASAP, see here - otherwise read on for relevant context
+</small>
+
+### Tonights plan
+
+- create a local k3s cluster by using k3d
+- add some namespaces to said cluster
+- prepare kubernetes resources & helm values to our filesytem
+- install some helm charts to said cluster
+- declare a persistent volume claim & secret for our cluster
+- run a kubernetes job to create ERPNext site
+- setup an ingress to route our ERPNext site through the LoadBalancer
+- suss out the joys of ERPNext
+
+### If you'd rather blindly copy+paste to get it running ASAP, see below
+
+```bash
+git clone ssh://...
+cd bleh
+k3d cluster create nexterp -v /opt/local-path-provisioner:/opt/local-path-provisioner
+kubectl config use-context k3d-nexterp
+kubectl apply -f pvc.yaml
+helm install mariadb -n mariadb bitnami/mariadb -f maria-db-values.yaml
+helm install frappe-bench-2 --namespace erpnext frappe/erpnext --version 2.0.11 -f values.yaml
+kubectl apply -f site.yaml && kubectl wait --for=condition=complete job/site
+kubectl apply -f ingress.yaml
+```
+
+## Install Tooling
+_It is assumed you already have Docker installed and working, and you're running a Unix based OS._<br />
+
+### k3d
+k3d is a helper that lets you easily create k3s clusters, using a docker daemon
+```
+curl -s https://raw.githubusercontent.com/rancher/k3d/main/install.sh | bash
+```
+
+_v4.10 was latest at time of writing_
+
+**references**
+- [ k3d github - README](https://github.com/rancher/k3d#get)
+
+### helm
+We will be installing the ERPNext stack by using their official helm chart
+```bash
+curl https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash
+```
+
+_v3.5.1 was latest at time of writing_
+
+**references**
+- [helm - install docs](https://helm.sh/docs/intro/install/)
+
+
+### optionally
+Consider using [kubectx](https://github.com/ahmetb/kubectx) or setting your own zsh/bash aliases to easily switch kubectl context
+
+## Create the cluster
+
+```bash
+k3d cluster create nexterp -v /opt/local-path-provisioner:/opt/local-path-provisioner
+kubectl config use-context k3d-nexterp
+```
+
+A volume is required for the cluster because we will be using the k3s built-in local-path persistence
+
+Your kubecontext gets updated with the second command, meaning now when we run `kubectl` it will default to our new K3s cluster.
+
+## Prepare resources & environment
+
+Firstly we'll work within a newly created directory because `~` is already a mess
+```bash
+mkdir erpnext-stuff && cd erpnext-stuff
+```
+
+## Helm repos
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo add frappe https://helm.erpnext.com
+helm repo update
+```
+
+## Namespaces
+
+Create two namespaces to separate our database from ERPNext.
+
+```bash
+kubectl create ns mariadb
+kubectl create ns erpnext
+```
+
+> Namespaces are a good way to separate concerns, but not a hard-requirement 
+
+## Resources
+
+Save each Kubernetes resource inside the recently created `erpnext-stuff` directory<br />
+_Do not run kubectl apply for now_
+
+`pvc.yaml`
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  labels:
+    app: erpnext
+  name: erpnext-pvc
+  namespace: erpnext
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+  storageClassName: local-path
+```
+
+Despite the ERPNext helm chart creating a PVC, we actually want to avoid using their PVC [because the `accessMode` is hardcoded to `RWX - ReadWriteMany`](https://github.com/frappe/helm/blob/1081bbea689b4b1f6161453577b7077a53685c1c/erpnext/templates/pvc.yaml#L13).
+
+When using K3s, `RWX` is not possible with the [built-in storage controller 'local-path'](https://rancher.com/docs/k3s/latest/en/storage/). It only supports `RWO - ReadWriteOnce` or below, and this is sufficient for our needs.
+
+> Dumbing down what `RWO - ReadWriteOnce` is, the volume can be mounted to support writes **one node at a time**<br />
+> Given we've provisioned our K3s cluster with a single node (default) `RWO` will suffice for our needs in place of `RWX`
+
+Kubernetes [provide a list of possible storage classes](https://kubernetes.io/docs/concepts/storage/storage-classes/#provisioner) along with their supported access modes, but this is mostly unrelated for our goal today.
+
+---
+`site-ingress.yaml`
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minimal-ingress
+  annotations:
+    ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: "localhost"
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: our-erpnext
+            port:
+              number: 80
+```
+
+The ingress resource makes our built-in ingress-controller (ie. web server) traefik aware of a routing rule.
+
+In our case we're telling traefik that `http://localhost/` will route through a service called `our-erpnext:80`<br />
+`our-erpnext` being a service which will be provisioned when we install the ERPNext helm chart.
+
+> Still unsure what an Ingress is? think of it like a virtualhost when using Apache, or an nginx `server{}` configuration
+
+---
+`erpnext-db-secret.yaml`
+```yaml
+apiVersion: v1
+data:
+  password: c29tZVNlY3VyZVBhc3N3b3Jk
+kind: Secret
+metadata:
+  name: mariadb-root-password
+type: Opaque
+```
+
+This secret will hold the password of the database user which ERPNext will use to create sites, and perform queries with.
+
+`c29tZVNlY3VyZVBhc3N3b3Jk` is base64 for `someSecurePasword` and it's the same password MariaDB will be told to use as root password, when we install later.
+
+Feel free to change as you see fit, and obviously do not use my defaults in a real or production environment.
+
+---
+`create-site-job.yaml`
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-erp-site
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      securityContext:
+        supplementalGroups: [1000]
+      containers:
+      - name: create-site
+        image: frappe/erpnext-worker:v12.17.0
+        args: ["new"]
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+          - name: sites-dir
+            mountPath: /home/frappe/frappe-bench/sites
+        env:
+          - name: "SITE_NAME"
+            value: "localhost"
+          - name: "DB_ROOT_USER"
+            value: root
+          - name: "MYSQL_ROOT_PASSWORD"
+            valueFrom:
+              secretKeyRef:
+                key: password
+                name: mariadb-root-password
+          - name: "ADMIN_PASSWORD"
+            value: "bigchungus"
+          - name: "INSTALL_APPS"
+            value: "erpnext"
+      restartPolicy: Never
+      volumes:
+        - name: sites-dir
+          persistentVolumeClaim:
+            claimName: erpnext-pvc
+            readOnly: false
+```
+
+As mentioned before, ERPNext is multi-tenanted. You can run many sites, and sites can have many companies.<br />
+One database is created per site, and there's also some configuration files created for the ERPNext setup to resolve sites to databases and beyond.
+
+The 'create-site' job is the recommended way to provision a new 'site' to your ERPNext setup.
+
+**Paths of interest**
+- `spec.template.spec.containers[0].image` - should match version used in helm chart
+- `spec.template.spec.containers[0].volumeMounts` - volume required for ERPNext to resolve hostnames to databases, and other meta
+- `spec.template.spec.containers[0].env[0]` - `SITE_NAME` is the FQDN where this ERPNext site is destined for
+- `spec.template.spec.containers[0].env[3]` - `ADMIN_PASSWORD` we will use this to login with later
+- `spec.template.spec.volumes[0]` - volume mount based on our `pvc.yaml`
+
+**Resources**
+- https://helm.erpnext.com/kubernetes-resources/create-new-site-job
+- https://hub.docker.com/r/frappe/erpnext-worker
+
+---
+
+`mariadb-values.yaml`
+
+```yaml
+auth:
+  rootPassword: "someSecurePassword"
+
+primary:
+  configuration: |-
+    [mysqld]
+    character-set-client-handshake=FALSE
+    skip-name-resolve
+    explicit_defaults_for_timestamp
+    basedir=/opt/bitnami/mariadb
+    plugin_dir=/opt/bitnami/mariadb/plugin
+    port=3306
+    socket=/opt/bitnami/mariadb/tmp/mysql.sock
+    tmpdir=/opt/bitnami/mariadb/tmp
+    max_allowed_packet=16M
+    bind-address=0.0.0.0
+    pid-file=/opt/bitnami/mariadb/tmp/mysqld.pid
+    log-error=/opt/bitnami/mariadb/logs/mysqld.log
+    character-set-server=utf8mb4
+    collation-server=utf8mb4_unicode_ci
+
+    [client]
+    port=3306
+    socket=/opt/bitnami/mariadb/tmp/mysql.sock
+    default-character-set=utf8mb4
+    plugin_dir=/opt/bitnami/mariadb/plugin
+
+    [manager]
+    port=3306
+    socket=/opt/bitnami/mariadb/tmp/mysql.sock
+    pid-file=/opt/bitnami/mariadb/tmp/mysqld.pid
+```
+
+ERPNext indicate your MariaDB instance should explicitly use [this configuration](https://helm.erpnext.com/prepare-kubernetes/mariadb). I'm going to assume they're primarily wanting you to have a `utf8mb4` happy setup. 
+
+You may notice the ERPNext helm chart instructions at https://helm.erpnext.com/prepare-kubernetes/mariadb are slightly different to my values above.
+
+This is because their documentation revolves around an older mariadb chart version. The newer chart version does not enable slave by default now too, so our config is simplified.
+
+**Resources**
+- https://helm.erpnext.com/prepare-kubernetes/mariadb
+
+### ERPNext
+`erpnext-values.yaml`
+```yaml
+replicaCount: 0
+
+mariadbHost: "mariadb.mariadb.svc.cluster.local"
+
+persistence:
+  enabled: false
+  existingClaim: "erpnext-pvc"
+```
+
+References:
+- https://github.com/frappe/helm/blob/master/erpnext/values.yaml
+- https://about.lovia.life/docs/infrastructure/erpnext/
+- https://github.com/frappe/helm/tree/master/erpnext
+- https://helm.erpnext.com/kubernetes-resources/
+
+## Bringing it all together
+1. Declare the PVC to your cluster. By default the PVC will not be provisioned until required (ie. container mounts it)
+```bash
+kubectl apply -f pvc.yaml
+```
+
+2. Install MariaDB with our specific server configuration, and root password. `--wait` will force the process to hang until all pods & services are healthy
+```bash
+helm install mariadb --namespace mariadb bitnami/mariadb -f mariadb-values.yaml --wait
+```
+
+3. Install ERPNext. All services and pods will be deployed essentially as scaffholding, for any sites provisioned afterward.
+```bash
+helm install our-erpnext --namespace erpnext frappe/erpnext --version 2.0.11 -f erpnext-values.yaml --wait
+```
+
+4. Declare the MariaDB user account password secret for our upcoming job
+```bash
+kubectl apply --namespace erpnext -f erpnext-db-secret.yaml
+```
+
+5. Run the 'create site' job, and wait for the completion
+```bash
+kubectl apply -f create-site-job.yaml && kubectl wait --for=condition=complete job/site
+```
+
+6. Setup ingress route so that Kubernetes knows to share it with our ingress-controller, which is the Traefik LoadBalancer service in `kube-system` with K3s
+```bash
+kubectl apply -f ingress.yaml
+```
+
+```
+echo "http://${kubectl get svc --namepace kube-system traefik -o jsonpath='{..ip}'}"
+```
+
+### Troubleshooting
+-
