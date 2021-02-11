@@ -4,7 +4,7 @@ title:  "Installing ErpNEXT to a local k3s cluster"
 date:   2021-02-11 12:13:39 +1100
 categories: erpnext
 ---
-[ERPNext is a beautiful piece of open source](https://erpnext.com/) (GPL licensed) work - intended to offer an alternative to the encumbered and very enterprise SAP and ERP solutions that are typically implemented.
+[ERPNext is a beautiful piece of open source](https://erpnext.com/) (GPL licensed) work - intended to offer an alternative to the encumbered and very enterprise SAP & ERP solutions that typically dominate the business world.
 
 However, given the nature of an OSS ERP project, a slow but natural rate of adoption & popularity will ensure, but for now the kubernetes/helm documentation are quite raw. Community and developer resources are also lacking due to reasons that will likely just resolve, as the project matures and gets more widely adopted.
 
