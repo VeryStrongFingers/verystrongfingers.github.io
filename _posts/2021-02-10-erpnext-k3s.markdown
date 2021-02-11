@@ -149,8 +149,8 @@ spec:
 
 The ingress resource makes our built-in ingress-controller (ie. web server) traefik aware of a routing rule.
 
-In our case we're telling traefik that `http://localhost/` will route through a service called `our-erpnext:80`<br />
-`our-erpnext` being a service which will be provisioned when we install the ERPNext helm chart.
+In our case we're telling traefik that `http://localhost/` will route through a service called `erpnext:80`<br />
+`erpnext` being a service which will be provisioned when we install the ERPNext helm chart.
 
 > Still unsure what an Ingress is? think of it like a virtualhost when using Apache, or an nginx `server{}` configuration
 
