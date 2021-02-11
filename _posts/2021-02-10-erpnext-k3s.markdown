@@ -26,7 +26,7 @@ If you just want to blindly copy+paste commands, getting your instance operation
 - suss out the joys of ERPNext
 
 ## Install Tooling
-_It is assumed you already have Docker installed and working, and you're running a Unix based OS._<br />
+_It is assumed you already have kubectl & Docker installed, and that you're running a Unix based OS._<br />
 
 ### k3d
 k3d is a helper that lets you easily create k3s clusters, using a docker daemon
@@ -347,9 +347,7 @@ Updating customizations for Address
 *** Scheduler is disabled ***
 ```
 
-Now your ERPNext instance is operational, and you have a site setup.
-
-The final setup is to setup ingress route. We'll be using it to let Kubernetes knows the ERPNext site will route through the ingress-controller, which under the hood is the built-in Traefik LoadBalancer service in `kube-system`.
+Now your ERPNext instance is operational, and you have a site setup. The final step is to declare the ingress, so we can route our ERPNext site's name to the ERPNext service.
 
 ```bash
 kubectl apply -f ingress.yaml
