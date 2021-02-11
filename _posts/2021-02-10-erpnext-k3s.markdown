@@ -1,14 +1,14 @@
 ---
 layout: post
 title:  "Installing ErpNEXT to a local k3s cluster"
-date:   2021-02-00 01:13:39 +1100
+date:   2021-02-11 12:13:39 +1100
 categories: erpnext
 ---
 [ERPNext is a beautiful piece of open source](https://erpnext.com/) (GPL licensed) work - intended to offer an alternative to the encumbered and very enterprise SAP and ERP solutions that are typically implemented.
 
-Given the nature of the project with slow but natural rate of adoption & popularity, the kubernetes/helm documentation are quite raw. Community and developer resources are also lacking due to reasons that will likely resolve as the project matures and gets adopted.  
+However, given the nature of an OSS ERP project, a slow but natural rate of adoption & popularity will ensure, but for now the kubernetes/helm documentation are quite raw. Community and developer resources are also lacking due to reasons that will likely just resolve, as the project matures and gets more widely adopted.
 
-We've had a very recent release of K3d v4.0 (mid-Jan 2021) which I've been keen to try out. Thus this post was born.
+We've had a very recent release of K3d v4.0 (mid-Jan 2021) which I had been waiting keenly to try out. It just felt like a perfect matching, but understandably lacking resources pairing the two.
 
 <small>
 If you just want to blindly copy+paste commands, getting your instance operational ASAP, [see here](https://github.com/VeryStrongFingers/erpnext-k3s) - otherwise read on for relevant context
@@ -57,8 +57,10 @@ Consider using [kubectx](https://github.com/ahmetb/kubectx) or setting your own 
 ## Create the cluster
 
 ```bash
-k3d cluster create erpnext -v /opt/local-path-provisioner:/opt/local-path-provisioner
-kubectl config use-context k3d-erpnext
+docker volume create erpnext-persistence
+
+k3d cluster create strong-erpnext --volume erpnext-persistence:/opt/local-path-provisioner
+kubectl config use-context k3d-strong-erpnext
 ```
 
 A volume is required for the cluster because we will be using the k3s built-in local-path persistence
@@ -103,7 +105,6 @@ metadata:
   labels:
     app: erpnext
   name: erpnext-pvc
-  namespace: erpnext
 spec:
   accessModes:
   - ReadWriteOnce
@@ -350,7 +351,7 @@ Updating customizations for Address
 Now your ERPNext instance is operational, and you have a site setup. The final step is to declare the ingress, so we can route our ERPNext site's name to the ERPNext service.
 
 ```bash
-kubectl apply -f ingress.yaml
+kubectl apply --namespace erpnext -f ingress.yaml
 ```
 
 ## Usage
@@ -358,7 +359,9 @@ kubectl apply -f ingress.yaml
 kubectl port-forward --namespace kube-system svc/traefik 8080:80
 ```
 
-Now visit http://localhost:8080 and you should be prompted with the ERPNext login page.
+Now visit http://localhost:8080 in your browser, and you should be prompted with the ERPNext login page.
 
 u: `administrator`<br />
 p: `bigchungus`
+
+For future reference, there is a 'shortcut' repo https://github.com/VeryStrongFingers/erpnext-k3s - along with further information about using a different hostname (ie. not localhost)
