@@ -2,7 +2,7 @@
 layout: post
 title:  "Installing ErpNEXT to a local k3s cluster"
 date:   2021-02-00 01:13:39 +1100
-categories: jekyll update
+categories: erpnext
 ---
 [ERPNext is a beautiful piece of open source](https://erpnext.com/) (GPL licensed) work - intended to offer an alternative to the encumbered and very enterprise SAP and ERP solutions that are typically implemented.
 
@@ -11,7 +11,7 @@ Given the nature of the project with slow but natural rate of adoption & popular
 We've had a very recent release of K3d v4.0 (mid-Jan 2021) which I've been keen to try out. Thus this post was born.
 
 <small>
-If you just want to blindly copy+paste commands, getting your instance operational ASAP, see here - otherwise read on for relevant context
+If you just want to blindly copy+paste commands, getting your instance operational ASAP, [see here](https://github.com/VeryStrongFingers/erpnext-k3s) - otherwise read on for relevant context
 </small>
 
 ### Tonights plan
@@ -24,20 +24,6 @@ If you just want to blindly copy+paste commands, getting your instance operation
 - run a kubernetes job to create ERPNext site
 - setup an ingress to route our ERPNext site through the LoadBalancer
 - suss out the joys of ERPNext
-
-### If you'd rather blindly copy+paste to get it running ASAP, see below
-
-```bash
-git clone ssh://...
-cd bleh
-k3d cluster create nexterp -v /opt/local-path-provisioner:/opt/local-path-provisioner
-kubectl config use-context k3d-nexterp
-kubectl apply -f pvc.yaml
-helm install mariadb -n mariadb bitnami/mariadb -f maria-db-values.yaml
-helm install frappe-bench-2 --namespace erpnext frappe/erpnext --version 2.0.11 -f values.yaml
-kubectl apply -f site.yaml && kubectl wait --for=condition=complete job/site
-kubectl apply -f ingress.yaml
-```
 
 ## Install Tooling
 _It is assumed you already have Docker installed and working, and you're running a Unix based OS._<br />
@@ -71,8 +57,8 @@ Consider using [kubectx](https://github.com/ahmetb/kubectx) or setting your own 
 ## Create the cluster
 
 ```bash
-k3d cluster create nexterp -v /opt/local-path-provisioner:/opt/local-path-provisioner
-kubectl config use-context k3d-nexterp
+k3d cluster create erpnext -v /opt/local-path-provisioner:/opt/local-path-provisioner
+kubectl config use-context k3d-erpnext
 ```
 
 A volume is required for the cluster because we will be using the k3s built-in local-path persistence
@@ -155,7 +141,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: our-erpnext
+            name: erpnext
             port:
               number: 80
 ```
@@ -241,8 +227,8 @@ The 'create-site' job is the recommended way to provision a new 'site' to your E
 - `spec.template.spec.volumes[0]` - volume mount based on our `pvc.yaml`
 
 **Resources**
-- https://helm.erpnext.com/kubernetes-resources/create-new-site-job
-- https://hub.docker.com/r/frappe/erpnext-worker
+- [erpnext helm docs - creating new site](https://helm.erpnext.com/kubernetes-resources/create-new-site-job)
+- [dockerhub - frappe/erpnext-worker](https://hub.docker.com/r/frappe/erpnext-worker)
 
 ---
 
@@ -289,12 +275,12 @@ You may notice the ERPNext helm chart instructions at https://helm.erpnext.com/p
 This is because their documentation revolves around an older mariadb chart version. The newer chart version does not enable slave by default now too, so our config is simplified.
 
 **Resources**
-- https://helm.erpnext.com/prepare-kubernetes/mariadb
+- [erpnext helm documentation](https://helm.erpnext.com/prepare-kubernetes/mariadb)
 
 ### ERPNext
 `erpnext-values.yaml`
 ```yaml
-replicaCount: 0
+replicaCount: 1
 
 mariadbHost: "mariadb.mariadb.svc.cluster.local"
 
@@ -304,25 +290,25 @@ persistence:
 ```
 
 References:
-- https://github.com/frappe/helm/blob/master/erpnext/values.yaml
-- https://about.lovia.life/docs/infrastructure/erpnext/
-- https://github.com/frappe/helm/tree/master/erpnext
-- https://helm.erpnext.com/kubernetes-resources/
+- [erpnext helm chart default values](https://github.com/frappe/helm/blob/master/erpnext/values.yaml)
+- [rando handbook with useful information](https://about.lovia.life/docs/infrastructure/erpnext/)
+- [frappe/helm - github](https://github.com/frappe/helm/tree/master/erpnext)
+- [erpnext helm docs](https://helm.erpnext.com/kubernetes-resources/)
 
 ## Bringing it all together
 1. Declare the PVC to your cluster. By default the PVC will not be provisioned until required (ie. container mounts it)
 ```bash
-kubectl apply -f pvc.yaml
+kubectl apply --namespace erpnext -f pvc.yaml
 ```
 
 2. Install MariaDB with our specific server configuration, and root password. `--wait` will force the process to hang until all pods & services are healthy
 ```bash
-helm install mariadb --namespace mariadb bitnami/mariadb -f mariadb-values.yaml --wait
+helm install mariadb --namespace mariadb bitnami/mariadb --version 9.3.1 -f maria-db-values.yaml --wait
 ```
 
 3. Install ERPNext. All services and pods will be deployed essentially as scaffholding, for any sites provisioned afterward.
 ```bash
-helm install our-erpnext --namespace erpnext frappe/erpnext --version 2.0.11 -f erpnext-values.yaml --wait
+helm install erpnext --namespace erpnext frappe/erpnext --version 2.0.11 -f erpnext-values.yaml --wait
 ```
 
 4. Declare the MariaDB user account password secret for our upcoming job
@@ -330,19 +316,51 @@ helm install our-erpnext --namespace erpnext frappe/erpnext --version 2.0.11 -f 
 kubectl apply --namespace erpnext -f erpnext-db-secret.yaml
 ```
 
-5. Run the 'create site' job, and wait for the completion
+5. Run the 'create site' job and stream the job's pod until completion
 ```bash
-kubectl apply -f create-site-job.yaml && kubectl wait --for=condition=complete job/site
+kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext -f job/create-erp-site
 ```
 
-6. Setup ingress route so that Kubernetes knows to share it with our ingress-controller, which is the Traefik LoadBalancer service in `kube-system` with K3s
+> A successful completion will look something like:
+
+```
+> kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext -f job/create-erp-site
+
+Attempt 1 to connect to mariadb.mariadb.svc.cluster.local:3306
+Attempt 1 to connect to erpnext-redis-queue:12000
+Attempt 1 to connect to erpnext-redis-cache:13000
+Attempt 1 to connect to erpnext-redis-socketio:11000
+Connections OK
+Created user _334389048b872a53
+Created database _334389048b872a53
+Granted privileges to user _334389048b872a53 and database _334389048b872a53
+Starting database import...
+Imported from database /home/frappe/frappe-bench/apps/frappe/frappe/database/mariadb/framework_mariadb.sql
+
+Installing frappe...
+Updating DocTypes for frappe        : [========================================]
+Updating country info               : [========================================]
+
+Installing erpnext...
+Updating DocTypes for erpnext       : [========================================]
+Updating customizations for Address
+*** Scheduler is disabled ***
+```
+
+Now your ERPNext instance is operational, and you have a site setup.
+
+The final setup is to setup ingress route. We'll be using it to let Kubernetes knows the ERPNext site will route through the ingress-controller, which under the hood is the built-in Traefik LoadBalancer service in `kube-system`.
+
 ```bash
 kubectl apply -f ingress.yaml
 ```
 
+## Usage
 ```
-echo "http://${kubectl get svc --namepace kube-system traefik -o jsonpath='{..ip}'}"
+kubectl port-forward --namespace kube-system svc/traefik 8080:80
 ```
 
-### Troubleshooting
--
+Now visit http://localhost:8080 and you should be prompted with the ERPNext login page.
+
+u: `administrator`<br />
+p: `bigchungus`
