@@ -319,13 +319,13 @@ kubectl apply --namespace erpnext -f erpnext-db-secret.yaml
 
 5. Run the 'create site' job and stream the job's pod until completion
 ```bash
-kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext -f job/create-erp-site
+kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext job/create-erp-site
 ```
 
 > A successful completion will look something like:
 
 ```
-> kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext -f job/create-erp-site
+> kubectl apply --namespace erpnext -f create-site-job.yaml && kubectl logs --namespace erpnext job/create-erp-site
 
 Attempt 1 to connect to mariadb.mariadb.svc.cluster.local:3306
 Attempt 1 to connect to erpnext-redis-queue:12000
