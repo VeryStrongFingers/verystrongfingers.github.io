@@ -233,7 +233,7 @@ The 'create-site' job is the recommended way to provision a new 'site' to your E
 
 ---
 
-`mariadb-values.yaml`
+`maria-db-values.yaml`
 
 ```yaml
 auth:
@@ -351,7 +351,7 @@ Updating customizations for Address
 Now your ERPNext instance is operational, and you have a site setup. The final step is to declare the ingress, so we can route our ERPNext site's name to the ERPNext service.
 
 ```bash
-kubectl apply --namespace erpnext -f ingress.yaml
+kubectl apply --namespace erpnext -f site-ingress.yaml
 ```
 
 ## Usage
